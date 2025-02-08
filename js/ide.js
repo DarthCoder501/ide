@@ -664,20 +664,82 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
 
     layout.registerComponent("codeAssistant", function (container, state) {
-      const codeAssistantEditor = monaco.editor.create(
-        container.getElement()[0],
-        {
-          automaticLayout: true,
-          scrollBeyondLastLine: false,
-          readOnly: false,
-          language: "plaintext",
-          fontFamily: "JetBrains Mono",
-          minimap: {
-            enabled: false,
-          },
-        }
+      const codeAssistantContainer = container.getElement()[0];
+      codeAssistantContainer.innerHTML = `
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <textarea id="codeAssistantInput" style="flex: 1; width: 100%;"></textarea>
+          <button id="codeAssistantSubmit" style="margin-top: 10px;">Ask Code Assistant</button>
+          <div id="codeAssistantOutput" style="flex: 1; width: 100%; overflow-y: auto; margin-top: 10px;"></div>
+        </div>
+      `;
+
+      const codeAssistantInput = codeAssistantContainer.querySelector(
+        "#codeAssistantInput"
       );
+      const codeAssistantSubmit = codeAssistantContainer.querySelector(
+        "#codeAssistantSubmit"
+      );
+      const codeAssistantOutput = codeAssistantContainer.querySelector(
+        "#codeAssistantOutput"
+      );
+
+      codeAssistantSubmit.addEventListener("click", async () => {
+        const userQuery = codeAssistantInput.value;
+        if (userQuery.trim() === "") {
+          alert("Please enter a question.");
+          return;
+        }
+
+        const code = sourceEditor.getValue();
+        const response = await fetchOpenRouterResponse(code, userQuery);
+        codeAssistantOutput.innerHTML = `<pre>${response}</pre>`;
+      });
     });
+
+    async function fetchOpenRouterResponse(code, userQuery) {
+      try {
+        const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+        const response = await fetch(
+          "https://openrouter.ai/api/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.0-flash-exp:free",
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: `Here is the code:\n${code}\n\nQuestion: ${userQuery}`,
+                    },
+                  ],
+                },
+              ],
+            }),
+          }
+        );
+
+        console.log("API Response Status:", response.status);
+
+        if (!response.ok) {
+          const errorDetails = await response.text();
+          console.error("OpenRouter API Error:", errorDetails);
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log("API Response Data:", data);
+        return data.choices[0].message.content;
+      } catch (error) {
+        console.error("Error fetching response from OpenRouter:", error);
+        return `An error occurred while fetching the response: ${error.message}`;
+      }
+    }
 
     layout.on("initialised", function () {
       setDefaults();
