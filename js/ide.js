@@ -666,39 +666,114 @@ document.addEventListener("DOMContentLoaded", async function () {
     layout.registerComponent("codeAssistant", function (container, state) {
       const codeAssistantContainer = container.getElement()[0];
       codeAssistantContainer.innerHTML = `
-        <div style="display: flex; flex-direction: column; height: 100%;">
-          <textarea id="codeAssistantInput" style="flex: 1; width: 100%;"></textarea>
-          <button id="codeAssistantSubmit" style="margin-top: 10px;">Ask Code Assistant</button>
-          <div id="codeAssistantOutput" style="flex: 1; width: 100%; overflow-y: auto; margin-top: 10px;"></div>
+        <div class="code-assistant-container">
+          <div class="chat-messages" id="codeAssistantMessages"></div>
+          <div class="input-container">
+            <textarea 
+              id="codeAssistantInput" 
+              placeholder="Ask a question about the code..."
+              class="message-input"
+            ></textarea>
+            <button id="codeAssistantSubmit" class="submit-button">
+              <svg class="send-icon" viewBox="0 0 24 24">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+              </svg>
+            </button>
+          </div>
         </div>
       `;
 
-      const codeAssistantInput = codeAssistantContainer.querySelector(
+      // Add dynamic styles
+      const style = document.createElement("style");
+      style.textContent = `
+        .code-assistant-container {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          background: #f5f5f5;
+          padding: 10px;
+          gap: 10px;
+        }
+        /* Add other styles from previous example */
+      `;
+      codeAssistantContainer.appendChild(style);
+
+      const messagesContainer = codeAssistantContainer.querySelector(
+        "#codeAssistantMessages"
+      );
+      const inputField = codeAssistantContainer.querySelector(
         "#codeAssistantInput"
       );
-      const codeAssistantSubmit = codeAssistantContainer.querySelector(
+      const submitButton = codeAssistantContainer.querySelector(
         "#codeAssistantSubmit"
       );
-      const codeAssistantOutput = codeAssistantContainer.querySelector(
-        "#codeAssistantOutput"
-      );
 
-      codeAssistantSubmit.addEventListener("click", async () => {
-        const userQuery = codeAssistantInput.value;
-        if (userQuery.trim() === "") {
-          alert("Please enter a question.");
-          return;
+      function createMessageElement(content, isUser = false) {
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${
+          isUser ? "user-message" : "assistant-message"
+        }`;
+
+        // Format markdown content
+        const formattedContent = content
+          .replace(/```([\s\S]*?)```/g, '<div class="code-block">$1</div>')
+          .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+          .replace(/\*(.*?)\*/g, "<em>$1</em>")
+          .replace(/`(.*?)`/g, "<code>$1</code>")
+          .replace(/\n/g, "<br>");
+
+        messageDiv.innerHTML = formattedContent;
+        return messageDiv;
+      }
+
+      async function handleSubmit() {
+        const userQuery = inputField.value.trim();
+        if (!userQuery) return;
+
+        // Add user message
+        messagesContainer.appendChild(createMessageElement(userQuery, true));
+        inputField.value = "";
+
+        // Add loading indicator
+        const loadingMessage = document.createElement("div");
+        loadingMessage.className = "message assistant-message";
+        loadingMessage.textContent = "Thinking...";
+        messagesContainer.appendChild(loadingMessage);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+        try {
+          const code = sourceEditor.getValue();
+          const response = await fetchOpenRouterResponse(code, userQuery);
+
+          // Replace loading indicator with response
+          messagesContainer.removeChild(loadingMessage);
+          messagesContainer.appendChild(createMessageElement(response));
+        } catch (error) {
+          messagesContainer.removeChild(loadingMessage);
+          messagesContainer.appendChild(
+            createMessageElement(`Error: ${error.message}`)
+          );
         }
 
-        const code = sourceEditor.getValue();
-        const response = await fetchOpenRouterResponse(code, userQuery);
-        codeAssistantOutput.innerHTML = `<pre>${response}</pre>`;
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+      }
+
+      submitButton.addEventListener("click", handleSubmit);
+      inputField.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          handleSubmit();
+        }
       });
     });
 
     async function fetchOpenRouterResponse(code, userQuery) {
       try {
-        const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+        const OPENROUTER_API_KEY = "api-key-here";
+
+        console.log("Sending request to OpenRouter API...");
+        console.log("API Key:", OPENROUTER_API_KEY);
+
         const response = await fetch(
           "https://openrouter.ai/api/v1/chat/completions",
           {
@@ -708,7 +783,7 @@ document.addEventListener("DOMContentLoaded", async function () {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              model: "google/gemini-2.0-flash-exp:free",
+              model: "google/gemini-2.0-pro-exp-02-05:free",
               messages: [
                 {
                   role: "user",
